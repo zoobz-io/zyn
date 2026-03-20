@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/zoobzio/pipz"
+	"github.com/zoobz-io/pipz"
 )
 
 // ClassificationInput contains rich input structure for classification.

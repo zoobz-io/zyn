@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/zoobzio/zyn"
+	"github.com/zoobz-io/zyn"
 )
 
 func TestResponseBuilder_BinaryResponse(t *testing.T) {

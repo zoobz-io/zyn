@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/zoobzio/zyn"
-	zynt "github.com/zoobzio/zyn/testing"
+	"github.com/zoobz-io/zyn"
+	zynt "github.com/zoobz-io/zyn/testing"
 )
 
 func TestConcurrency_MultipleGoroutinesFiring(t *testing.T) {

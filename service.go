@@ -6,8 +6,8 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
-	"github.com/zoobzio/capitan"
-	"github.com/zoobzio/pipz"
+	"github.com/zoobz-io/capitan"
+	"github.com/zoobz-io/pipz"
 )
 
 // Identity for the LLM terminal processor.

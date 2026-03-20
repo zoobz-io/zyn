@@ -1,6 +1,6 @@
 package zyn
 
-import "github.com/zoobzio/capitan"
+import "github.com/zoobz-io/capitan"
 
 // Signals for hook events.
 var (

@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/zoobzio/pipz"
+	"github.com/zoobz-io/pipz"
 )
 
 // ConvertInput contains rich input structure for conversion.

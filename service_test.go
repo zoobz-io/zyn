@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/zoobzio/pipz"
+	"github.com/zoobz-io/pipz"
 )
 
 // Test identities for service tests.

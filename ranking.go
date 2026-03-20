@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/zoobzio/pipz"
+	"github.com/zoobz-io/pipz"
 )
 
 // RankingInput contains rich input structure for ranking.
