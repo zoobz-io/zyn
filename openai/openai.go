@@ -9,8 +9,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/zoobzio/capitan"
-	"github.com/zoobzio/zyn"
+	"github.com/zoobz-io/capitan"
+	"github.com/zoobz-io/zyn"
 )
 
 // Provider implements the zyn Provider interface for OpenAI API.

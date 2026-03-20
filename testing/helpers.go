@@ -9,7 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/zoobzio/zyn"
+	"github.com/zoobz-io/zyn"
 )
 
 // Provider name constants for test helpers.

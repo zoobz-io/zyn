@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/zoobzio/pipz"
+	"github.com/zoobz-io/pipz"
 )
 
 // Sentiment constants.

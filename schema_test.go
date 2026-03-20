@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/zoobzio/sentinel"
+	"github.com/zoobz-io/sentinel"
 )
 
 // Test structs for schema generation.

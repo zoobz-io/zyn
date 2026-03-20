@@ -5,7 +5,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/zoobzio/capitan"
+	"github.com/zoobz-io/capitan"
 )
 
 // TestRequestStartedHook verifies that request.started hook is emitted with all fields.

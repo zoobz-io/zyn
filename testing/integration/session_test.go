@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/zoobzio/zyn"
-	zynt "github.com/zoobzio/zyn/testing"
+	"github.com/zoobz-io/zyn"
+	zynt "github.com/zoobz-io/zyn/testing"
 )
 
 func TestSession_MessageAccumulation(t *testing.T) {

@@ -1,13 +1,13 @@
 # zyn
 
-[![CI Status](https://github.com/zoobzio/zyn/workflows/CI/badge.svg)](https://github.com/zoobzio/zyn/actions/workflows/ci.yml)
-[![codecov](https://codecov.io/gh/zoobzio/zyn/graph/badge.svg?branch=main)](https://codecov.io/gh/zoobzio/zyn)
-[![Go Report Card](https://goreportcard.com/badge/github.com/zoobzio/zyn)](https://goreportcard.com/report/github.com/zoobzio/zyn)
-[![CodeQL](https://github.com/zoobzio/zyn/workflows/CodeQL/badge.svg)](https://github.com/zoobzio/zyn/security/code-scanning)
-[![Go Reference](https://pkg.go.dev/badge/github.com/zoobzio/zyn.svg)](https://pkg.go.dev/github.com/zoobzio/zyn)
-[![License](https://img.shields.io/github/license/zoobzio/zyn)](LICENSE)
-[![Go Version](https://img.shields.io/github/go-mod/go-version/zoobzio/zyn)](go.mod)
-[![Release](https://img.shields.io/github/v/release/zoobzio/zyn)](https://github.com/zoobzio/zyn/releases)
+[![CI Status](https://github.com/zoobz-io/zyn/workflows/CI/badge.svg)](https://github.com/zoobz-io/zyn/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/zoobz-io/zyn/graph/badge.svg?branch=main)](https://codecov.io/gh/zoobz-io/zyn)
+[![Go Report Card](https://goreportcard.com/badge/github.com/zoobz-io/zyn)](https://goreportcard.com/report/github.com/zoobz-io/zyn)
+[![CodeQL](https://github.com/zoobz-io/zyn/workflows/CodeQL/badge.svg)](https://github.com/zoobz-io/zyn/security/code-scanning)
+[![Go Reference](https://pkg.go.dev/badge/github.com/zoobz-io/zyn.svg)](https://pkg.go.dev/github.com/zoobz-io/zyn)
+[![License](https://img.shields.io/github/license/zoobz-io/zyn)](LICENSE)
+[![Go Version](https://img.shields.io/github/go-mod/go-version/zoobz-io/zyn)](go.mod)
+[![Release](https://img.shields.io/github/v/release/zoobz-io/zyn)](https://github.com/zoobz-io/zyn/releases)
 
 Type-safe LLM orchestration for Go.
 
@@ -58,7 +58,7 @@ Type-safe at the edges. Conversational in between.
 ## Install
 
 ```bash
-go get github.com/zoobzio/zyn
+go get github.com/zoobz-io/zyn
 ```
 
 Requires Go 1.24+.
@@ -74,8 +74,8 @@ import (
     "os"
     "time"
 
-    "github.com/zoobzio/zyn"
-    "github.com/zoobzio/zyn/openai"
+    "github.com/zoobz-io/zyn"
+    "github.com/zoobz-io/zyn/openai"
 )
 
 func main() {
@@ -119,8 +119,8 @@ func main() {
 - **Type-safe** — Generics enforce output types at compile time
 - **Structured** — LLM responses parse directly into your structs
 - **Conversational** — Sessions maintain context across synapse calls
-- **Reliable** — [pipz](https://github.com/zoobzio/pipz) patterns built in
-- **Observable** — [capitan](https://github.com/zoobzio/capitan) signals for every LLM call
+- **Reliable** — [pipz](https://github.com/zoobz-io/pipz) patterns built in
+- **Observable** — [capitan](https://github.com/zoobz-io/capitan) signals for every LLM call
 - **Testable** — Mock provider for deterministic unit tests
 
 ## Composable LLM Patterns

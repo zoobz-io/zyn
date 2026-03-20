@@ -6,7 +6,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/zoobzio/sentinel"
+	"github.com/zoobz-io/sentinel"
 )
 
 // mapTypeRegex matches map[K]V patterns and captures the value type.

@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/zoobzio/zyn"
-	zynt "github.com/zoobzio/zyn/testing"
+	"github.com/zoobz-io/zyn"
+	zynt "github.com/zoobz-io/zyn/testing"
 )
 
 func TestEdgeCase_LargeSessionHistory(t *testing.T) {

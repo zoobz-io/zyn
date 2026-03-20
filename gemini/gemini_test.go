@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/zoobzio/zyn"
+	"github.com/zoobz-io/zyn"
 )
 
 func TestProviderCall(t *testing.T) {

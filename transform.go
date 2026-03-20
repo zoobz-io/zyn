@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/zoobzio/pipz"
+	"github.com/zoobz-io/pipz"
 )
 
 // TransformInput contains rich input structure for transformation.
