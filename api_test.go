@@ -130,6 +130,9 @@ func TestSynapseRequest(t *testing.T) {
 		if req.Error != nil {
 			t.Error("zero-value SynapseRequest should have nil Error")
 		}
+		if req.StreamCallback != nil {
+			t.Error("zero-value SynapseRequest should have nil StreamCallback")
+		}
 	})
 
 	t.Run("field_assignment", func(t *testing.T) {
@@ -146,5 +149,37 @@ func TestSynapseRequest(t *testing.T) {
 		if req.SynapseType != "binary" {
 			t.Errorf("expected SynapseType='binary', got '%s'", req.SynapseType)
 		}
+	})
+
+	t.Run("stream_callback_field", func(t *testing.T) {
+		called := false
+		req := SynapseRequest{
+			StreamCallback: func(chunk string) { called = true },
+		}
+		req.StreamCallback("test")
+		if !called {
+			t.Error("StreamCallback should have been called")
+		}
+	})
+}
+
+func TestStreamingProvider(t *testing.T) {
+	t.Run("simple", func(t *testing.T) {
+		// MockStreamingProvider satisfies StreamingProvider
+		var _ StreamingProvider = NewMockStreamingProvider(5)
+	})
+
+	t.Run("reliability", func(t *testing.T) {
+		// Regular MockProvider does NOT implement StreamingProvider
+		provider := NewMockProvider()
+		_, ok := provider.(StreamingProvider)
+		if ok {
+			t.Error("MockProvider should not implement StreamingProvider")
+		}
+	})
+
+	t.Run("chaining", func(t *testing.T) {
+		// MockStreamingProvider also satisfies Provider
+		var _ Provider = NewMockStreamingProvider(5)
 	})
 }

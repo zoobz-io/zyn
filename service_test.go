@@ -126,6 +126,111 @@ func TestService_GetPipeline(t *testing.T) {
 	})
 }
 
+func TestService_StreamExecute(t *testing.T) {
+	t.Run("simple", func(t *testing.T) {
+		// Non-streaming provider with callback — falls back to Call, callback not invoked
+		provider := NewMockProviderWithResponse(`{"decision": true, "confidence": 0.9, "reasoning": ["test"]}`)
+		pipeline := NewTerminal(provider)
+		service := NewService[BinaryResponse](pipeline, "test", provider, DefaultTemperatureDeterministic)
+
+		var chunks []string
+		callback := func(chunk string) { chunks = append(chunks, chunk) }
+
+		ctx := context.Background()
+		prompt := &Prompt{Task: "test", Input: "test", Schema: "{}"}
+		response, err := service.StreamExecute(ctx, NewSession(), prompt, 0.5, callback)
+		if err != nil {
+			t.Fatalf("StreamExecute failed: %v", err)
+		}
+		if !response.Decision {
+			t.Error("Expected decision to be true")
+		}
+		if len(chunks) != 0 {
+			t.Errorf("Expected 0 chunks from non-streaming provider, got %d", len(chunks))
+		}
+	})
+
+	t.Run("reliability", func(t *testing.T) {
+		// Streaming provider delivers chunks
+		resp := `{"output": "streamed text", "confidence": 0.9, "changes": [], "reasoning": ["test"]}`
+		provider := NewMockStreamingProvider(5)
+		provider.MockProvider = MockProvider{name: "mock-streaming", available: true}
+		// Use a fixed-response streaming provider for predictable output
+		fixedStreaming := &mockFixedStreamingProvider{
+			response:  resp,
+			chunkSize: 5,
+		}
+		pipeline := NewTerminal(fixedStreaming)
+		service := NewService[TransformResponse](pipeline, "transform", fixedStreaming, DefaultTemperatureCreative)
+
+		var chunks []string
+		callback := func(chunk string) { chunks = append(chunks, chunk) }
+
+		ctx := context.Background()
+		prompt := &Prompt{Task: "Transform: summarize", Input: "test text", Schema: "{}"}
+		result, err := service.StreamExecute(ctx, NewSession(), prompt, 0.5, callback)
+		if err != nil {
+			t.Fatalf("StreamExecute with streaming provider failed: %v", err)
+		}
+		if result.Output != "streamed text" {
+			t.Errorf("Expected output='streamed text', got '%s'", result.Output)
+		}
+		if len(chunks) == 0 {
+			t.Error("Expected chunks from streaming provider")
+		}
+	})
+
+	t.Run("chaining", func(t *testing.T) {
+		// StreamExecute with nil callback behaves like Execute
+		provider := NewMockProviderWithResponse(`{"decision": true, "confidence": 0.9, "reasoning": ["test"]}`)
+		pipeline := NewTerminal(provider)
+		service := NewService[BinaryResponse](pipeline, "test", provider, DefaultTemperatureDeterministic)
+
+		ctx := context.Background()
+		prompt := &Prompt{Task: "test", Input: "test", Schema: "{}"}
+		response, err := service.StreamExecute(ctx, NewSession(), prompt, 0.5, nil)
+		if err != nil {
+			t.Fatalf("StreamExecute with nil callback failed: %v", err)
+		}
+		if !response.Decision {
+			t.Error("Expected decision to be true")
+		}
+	})
+}
+
+// mockFixedStreamingProvider is a test helper that returns a fixed response via streaming.
+type mockFixedStreamingProvider struct {
+	response  string
+	chunkSize int
+}
+
+func (m *mockFixedStreamingProvider) Call(_ context.Context, _ []Message, _ float32) (*ProviderResponse, error) {
+	return &ProviderResponse{
+		Content: m.response,
+		Usage:   TokenUsage{Prompt: 100, Completion: 50, Total: 150},
+	}, nil
+}
+
+func (*mockFixedStreamingProvider) Name() string { return "mock-fixed-streaming" }
+
+func (m *mockFixedStreamingProvider) Stream(ctx context.Context, messages []Message, temperature float32, callback StreamCallback) (*ProviderResponse, error) {
+	resp, err := m.Call(ctx, messages, temperature)
+	if err != nil {
+		return nil, err
+	}
+	if callback != nil && m.chunkSize > 0 {
+		content := resp.Content
+		for i := 0; i < len(content); i += m.chunkSize {
+			end := i + m.chunkSize
+			if end > len(content) {
+				end = len(content)
+			}
+			callback(content[i:end])
+		}
+	}
+	return resp, nil
+}
+
 func TestService_Execute(t *testing.T) {
 	t.Run("simple", func(t *testing.T) {
 		provider := NewMockProvider()

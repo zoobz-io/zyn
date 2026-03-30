@@ -554,6 +554,85 @@ Input: final@test.com`
 	})
 }
 
+func TestNewMockStreamingProvider(t *testing.T) {
+	t.Run("simple", func(t *testing.T) {
+		provider := NewMockStreamingProvider(5)
+		if provider == nil {
+			t.Fatal("NewMockStreamingProvider returned nil")
+		}
+		if provider.Name() != "mock-streaming" {
+			t.Errorf("Expected name 'mock-streaming', got '%s'", provider.Name())
+		}
+	})
+
+	t.Run("reliability", func(t *testing.T) {
+		provider := NewMockStreamingProvider(3)
+		var chunks []string
+		callback := func(chunk string) { chunks = append(chunks, chunk) }
+
+		ctx := context.Background()
+		prompt := "Response JSON Schema:\n{}\n\nTransform: test\n\nInput: hello world"
+		resp, err := provider.Stream(ctx, []Message{{Role: RoleUser, Content: prompt}}, 0.5, callback)
+		if err != nil {
+			t.Fatalf("Stream failed: %v", err)
+		}
+		if resp.Content == "" {
+			t.Error("Expected non-empty content")
+		}
+		if len(chunks) == 0 {
+			t.Error("Expected chunks from streaming")
+		}
+		// Verify chunks reassemble to full content
+		combined := strings.Join(chunks, "")
+		if combined != resp.Content {
+			t.Errorf("Chunks should reassemble to full content: got '%s', want '%s'", combined, resp.Content)
+		}
+	})
+
+	t.Run("chaining", func(t *testing.T) {
+		// Also works as a regular Provider via Call
+		provider := NewMockStreamingProvider(5)
+		ctx := context.Background()
+		resp, err := provider.Call(ctx, []Message{{Role: RoleUser, Content: "test"}}, 0.5)
+		if err != nil {
+			t.Fatalf("Call failed: %v", err)
+		}
+		if resp.Content == "" {
+			t.Error("Expected non-empty content from Call")
+		}
+	})
+}
+
+func TestMockStreamingProvider_ZeroChunkSize(t *testing.T) {
+	provider := NewMockStreamingProvider(0)
+	var chunks []string
+	callback := func(chunk string) { chunks = append(chunks, chunk) }
+
+	ctx := context.Background()
+	resp, err := provider.Stream(ctx, []Message{{Role: RoleUser, Content: "test"}}, 0.5, callback)
+	if err != nil {
+		t.Fatalf("Stream failed: %v", err)
+	}
+	if len(chunks) != 1 {
+		t.Errorf("Expected 1 chunk with chunkSize=0, got %d", len(chunks))
+	}
+	if chunks[0] != resp.Content {
+		t.Error("Single chunk should equal full content")
+	}
+}
+
+func TestMockStreamingProvider_NilCallback(t *testing.T) {
+	provider := NewMockStreamingProvider(5)
+	ctx := context.Background()
+	resp, err := provider.Stream(ctx, []Message{{Role: RoleUser, Content: "test"}}, 0.5, nil)
+	if err != nil {
+		t.Fatalf("Stream with nil callback failed: %v", err)
+	}
+	if resp.Content == "" {
+		t.Error("Expected non-empty content")
+	}
+}
+
 func TestMockProviderFixed_Name(t *testing.T) {
 	provider := NewMockProviderWithResponse(`{"test": "value"}`)
 	name := provider.Name()

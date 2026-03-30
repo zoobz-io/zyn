@@ -359,6 +359,143 @@ func TestTransformSynapse_FireWithInputDetails(t *testing.T) {
 	})
 }
 
+func TestTransformSynapse_FireStream(t *testing.T) {
+	t.Run("simple", func(t *testing.T) {
+		provider := NewMockStreamingProvider(5)
+		synapse, err := Transform("summarize", provider)
+		if err != nil {
+			t.Fatalf("failed to create synapse: %v", err)
+		}
+
+		var chunks []string
+		callback := func(chunk string) { chunks = append(chunks, chunk) }
+
+		ctx := context.Background()
+		result, err := synapse.FireStream(ctx, NewSession(), "test text", callback)
+		if err != nil {
+			t.Fatalf("FireStream failed: %v", err)
+		}
+		if result == "" {
+			t.Error("Expected non-empty result")
+		}
+		if len(chunks) == 0 {
+			t.Error("Expected chunks from streaming provider")
+		}
+	})
+
+	t.Run("reliability", func(t *testing.T) {
+		// Non-streaming provider falls back gracefully
+		provider := NewMockProviderWithResponse(`{"output": "transformed", "confidence": 0.9, "changes": [], "reasoning": ["test"]}`)
+		synapse, err := Transform("summarize", provider)
+		if err != nil {
+			t.Fatalf("failed to create synapse: %v", err)
+		}
+
+		var chunks []string
+		callback := func(chunk string) { chunks = append(chunks, chunk) }
+
+		ctx := context.Background()
+		result, err := synapse.FireStream(ctx, NewSession(), "test text", callback)
+		if err != nil {
+			t.Fatalf("FireStream with non-streaming provider failed: %v", err)
+		}
+		if result != "transformed" {
+			t.Errorf("Expected 'transformed', got '%s'", result)
+		}
+		// Callback not invoked because provider is not StreamingProvider
+		if len(chunks) != 0 {
+			t.Errorf("Expected 0 chunks from non-streaming provider, got %d", len(chunks))
+		}
+	})
+
+	t.Run("chaining", func(t *testing.T) {
+		// Session is updated after streaming completes
+		provider := NewMockProviderWithResponse(`{"output": "streamed output", "confidence": 0.9, "changes": [], "reasoning": ["test"]}`)
+		synapse, err := Transform("summarize", provider)
+		if err != nil {
+			t.Fatalf("failed to create synapse: %v", err)
+		}
+
+		session := NewSession()
+		ctx := context.Background()
+		_, err = synapse.FireStream(ctx, session, "test text", func(string) {})
+		if err != nil {
+			t.Fatalf("FireStream failed: %v", err)
+		}
+		if session.Len() != 2 {
+			t.Errorf("Expected 2 messages in session after streaming, got %d", session.Len())
+		}
+	})
+}
+
+func TestTransformSynapse_FireStreamWithInput(t *testing.T) {
+	t.Run("simple", func(t *testing.T) {
+		provider := NewMockProviderWithResponse(`{"output": "streamed text", "confidence": 0.9, "changes": [], "reasoning": ["test"]}`)
+		synapse, err := Transform("test", provider)
+		if err != nil {
+			t.Fatalf("failed to create synapse: %v", err)
+		}
+
+		ctx := context.Background()
+		input := TransformInput{
+			Text:    "input text",
+			Context: "test context",
+		}
+		result, err := synapse.FireStreamWithInput(ctx, NewSession(), input, nil)
+		if err != nil {
+			t.Fatalf("FireStreamWithInput failed: %v", err)
+		}
+		if result != "streamed text" {
+			t.Errorf("Expected output='streamed text', got '%s'", result)
+		}
+	})
+
+	t.Run("reliability", func(t *testing.T) {
+		provider := NewMockStreamingProvider(3)
+		synapse, err := Transform("test", provider)
+		if err != nil {
+			t.Fatalf("failed to create synapse: %v", err)
+		}
+
+		var chunks []string
+		callback := func(chunk string) { chunks = append(chunks, chunk) }
+
+		ctx := context.Background()
+		input := TransformInput{
+			Text:        "test",
+			Temperature: 0.3,
+		}
+		_, err = synapse.FireStreamWithInput(ctx, NewSession(), input, callback)
+		if err != nil {
+			t.Fatalf("FireStreamWithInput with streaming provider failed: %v", err)
+		}
+		if len(chunks) == 0 {
+			t.Error("Expected chunks from streaming provider")
+		}
+	})
+
+	t.Run("chaining", func(t *testing.T) {
+		provider := NewMockProviderWithResponse(`{"output": "test output", "confidence": 0.9, "changes": [], "reasoning": ["test"]}`)
+		synapse, err := Transform("test", provider)
+		if err != nil {
+			t.Fatalf("failed to create synapse: %v", err)
+		}
+
+		ctx := context.Background()
+		input := TransformInput{
+			Text:    "test",
+			Context: "context",
+		}
+		result, err := synapse.FireStreamWithInput(ctx, NewSession(), input, nil)
+		if err != nil {
+			t.Fatalf("FireStreamWithInput failed: %v", err)
+		}
+		if result != "test output" {
+			t.Errorf("Expected 'test output', got '%s'", result)
+		}
+	})
+}
+
 func TestTransformSynapse_mergeInputs(t *testing.T) {
 	t.Run("simple", func(t *testing.T) {
 		synapse := &TransformSynapse{

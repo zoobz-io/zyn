@@ -371,3 +371,52 @@ func (m *mockProviderError) Call(_ context.Context, _ []Message, _ float32) (*Pr
 func (*mockProviderError) Name() string {
 	return "mock-error"
 }
+
+// MockStreamingProvider simulates streaming by splitting the response into chunks.
+// It implements both Provider (via embedding) and StreamingProvider.
+type MockStreamingProvider struct {
+	MockProvider
+	chunkSize int // Number of characters per chunk. 0 means deliver entire response as one chunk.
+}
+
+// NewMockStreamingProvider creates a mock that simulates streaming responses.
+// chunkSize controls how the response is split into chunks for the callback.
+func NewMockStreamingProvider(chunkSize int) *MockStreamingProvider {
+	return &MockStreamingProvider{
+		MockProvider: MockProvider{
+			name:      "mock-streaming",
+			available: true,
+		},
+		chunkSize: chunkSize,
+	}
+}
+
+// Stream simulates streaming by splitting the response into chunks and calling the callback.
+// After all chunks are delivered, returns the full ProviderResponse with usage.
+func (m *MockStreamingProvider) Stream(ctx context.Context, messages []Message, temperature float32, callback StreamCallback) (*ProviderResponse, error) {
+	resp, err := m.Call(ctx, messages, temperature)
+	if err != nil {
+		return nil, err
+	}
+
+	// Deliver chunks via callback
+	content := resp.Content
+	if m.chunkSize > 0 && callback != nil {
+		for i := 0; i < len(content); i += m.chunkSize {
+			end := i + m.chunkSize
+			if end > len(content) {
+				end = len(content)
+			}
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			default:
+				callback(content[i:end])
+			}
+		}
+	} else if callback != nil {
+		callback(content)
+	}
+
+	return resp, nil
+}

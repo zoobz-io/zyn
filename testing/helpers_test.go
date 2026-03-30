@@ -560,6 +560,79 @@ func TestLatencyProvider_Name(t *testing.T) {
 	}
 }
 
+func TestStreamRecorder(t *testing.T) {
+	t.Run("simple", func(t *testing.T) {
+		recorder := NewStreamRecorder()
+		if recorder.ChunkCount() != 0 {
+			t.Error("New recorder should have 0 chunks")
+		}
+	})
+
+	t.Run("reliability", func(t *testing.T) {
+		recorder := NewStreamRecorder()
+		cb := recorder.Callback()
+		cb("hello ")
+		cb("world")
+
+		if recorder.ChunkCount() != 2 {
+			t.Errorf("Expected 2 chunks, got %d", recorder.ChunkCount())
+		}
+		if recorder.Combined() != "hello world" {
+			t.Errorf("Expected 'hello world', got '%s'", recorder.Combined())
+		}
+		chunks := recorder.Chunks()
+		if len(chunks) != 2 || chunks[0] != "hello " || chunks[1] != "world" {
+			t.Errorf("Unexpected chunks: %v", chunks)
+		}
+	})
+
+	t.Run("chaining", func(t *testing.T) {
+		recorder := NewStreamRecorder()
+		cb := recorder.Callback()
+		cb("a")
+		cb("b")
+		recorder.Reset()
+		if recorder.ChunkCount() != 0 {
+			t.Error("Reset should clear chunks")
+		}
+	})
+}
+
+func TestStreamRecorder_ConcurrentSafety(t *testing.T) {
+	recorder := NewStreamRecorder()
+	cb := recorder.Callback()
+
+	var wg sync.WaitGroup
+	for i := 0; i < 100; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			cb("chunk")
+		}()
+	}
+
+	wg.Wait()
+
+	if recorder.ChunkCount() != 100 {
+		t.Errorf("Expected 100 chunks, got %d", recorder.ChunkCount())
+	}
+}
+
+func TestStreamRecorder_ChunksReturnsCopy(t *testing.T) {
+	recorder := NewStreamRecorder()
+	cb := recorder.Callback()
+	cb("a")
+	cb("b")
+
+	chunks := recorder.Chunks()
+	chunks[0] = "modified"
+
+	original := recorder.Chunks()
+	if original[0] != "a" {
+		t.Error("Chunks() should return a copy, original should be unmodified")
+	}
+}
+
 func TestSequencedProvider_EmptyResponses(t *testing.T) {
 	// Test with no responses - should use default error response
 	provider := NewSequencedProvider()

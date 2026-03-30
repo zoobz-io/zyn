@@ -49,8 +49,15 @@ func NewTerminal(provider Provider) pipz.Chainable[*SynapseRequest] {
 			Content: promptStr,
 		}
 
-		// Call provider with full message history
-		resp, err := provider.Call(ctx, messages, req.Temperature)
+		// If provider supports streaming and request has a callback, use Stream.
+		// Otherwise fall back to standard Call.
+		var resp *ProviderResponse
+		var err error
+		if sp, ok := provider.(StreamingProvider); ok && req.StreamCallback != nil {
+			resp, err = sp.Stream(ctx, messages, req.Temperature, req.StreamCallback)
+		} else {
+			resp, err = provider.Call(ctx, messages, req.Temperature)
+		}
 		if err != nil {
 			return req, err
 		}
@@ -76,6 +83,24 @@ func (s *Service[T]) GetPipeline() pipz.Chainable[*SynapseRequest] {
 // The session is only updated after a successful response, ensuring that
 // retries from pipz don't corrupt the session state.
 func (s *Service[T]) Execute(ctx context.Context, session *Session, prompt *Prompt, temperature float32) (T, error) {
+	return s.execute(ctx, session, prompt, temperature, nil)
+}
+
+// StreamExecute processes a prompt through the pipeline with streaming support.
+// The callback receives text chunks as they arrive from the provider.
+// After streaming completes, the full response is parsed, validated, and the session is updated
+// identically to Execute.
+//
+// If the provider does not implement StreamingProvider, the callback is not invoked and
+// execution falls back to the standard non-streaming path transparently.
+//
+// If retry options are applied to the pipeline, the callback may be invoked multiple times
+// across retries. Each retry starts streaming from the beginning.
+func (s *Service[T]) StreamExecute(ctx context.Context, session *Session, prompt *Prompt, temperature float32, callback StreamCallback) (T, error) {
+	return s.execute(ctx, session, prompt, temperature, callback)
+}
+
+func (s *Service[T]) execute(ctx context.Context, session *Session, prompt *Prompt, temperature float32, callback StreamCallback) (T, error) {
 	var result T
 
 	// Resolve temperature: use default if unset or zero
@@ -96,13 +121,14 @@ func (s *Service[T]) Execute(ctx context.Context, session *Session, prompt *Prom
 
 	// Create request with session context
 	request := &SynapseRequest{
-		Prompt:       prompt,
-		Temperature:  temperature,
-		Messages:     sessionMessages,
-		SessionID:    session.ID(),
-		RequestID:    requestID,
-		SynapseType:  s.synapseType,
-		ProviderName: s.providerName,
+		Prompt:         prompt,
+		Temperature:    temperature,
+		StreamCallback: callback,
+		Messages:       sessionMessages,
+		SessionID:      session.ID(),
+		RequestID:      requestID,
+		SynapseType:    s.synapseType,
+		ProviderName:   s.providerName,
 	}
 
 	// Emit request.started hook
