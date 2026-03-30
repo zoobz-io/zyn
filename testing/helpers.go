@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -453,11 +454,11 @@ func (r *StreamRecorder) Chunks() []string {
 func (r *StreamRecorder) Combined() string {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	var result string
+	var b strings.Builder
 	for _, chunk := range r.chunks {
-		result += chunk
+		b.WriteString(chunk)
 	}
-	return result
+	return b.String()
 }
 
 // ChunkCount returns the number of chunks recorded.

@@ -496,6 +496,35 @@ func TestTransformSynapse_FireStreamWithInput(t *testing.T) {
 	})
 }
 
+func TestTransformSynapse_FireStream_Error(t *testing.T) {
+	provider := NewMockProviderWithError("stream failed")
+	synapse, err := Transform("summarize", provider)
+	if err != nil {
+		t.Fatalf("failed to create synapse: %v", err)
+	}
+
+	ctx := context.Background()
+	_, err = synapse.FireStream(ctx, NewSession(), "test text", func(_ string) {})
+	if err == nil {
+		t.Error("Expected error from failing provider")
+	}
+}
+
+func TestTransformSynapse_FireStreamWithInput_Error(t *testing.T) {
+	provider := NewMockProviderWithError("stream failed")
+	synapse, err := Transform("test", provider)
+	if err != nil {
+		t.Fatalf("failed to create synapse: %v", err)
+	}
+
+	ctx := context.Background()
+	input := TransformInput{Text: "test"}
+	_, err = synapse.FireStreamWithInput(ctx, NewSession(), input, func(_ string) {})
+	if err == nil {
+		t.Error("Expected error from failing provider")
+	}
+}
+
 func TestTransformSynapse_mergeInputs(t *testing.T) {
 	t.Run("simple", func(t *testing.T) {
 		synapse := &TransformSynapse{

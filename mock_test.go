@@ -621,6 +621,32 @@ func TestMockStreamingProvider_ZeroChunkSize(t *testing.T) {
 	}
 }
 
+func TestMockStreamingProvider_ContextCancellation(t *testing.T) {
+	provider := NewMockStreamingProvider(1) // 1 char per chunk to maximize iterations
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // Cancel immediately
+
+	prompt := "Response JSON Schema:\n{}\n\nTransform: test\n\nInput: hello world this is a long text"
+	var chunks []string
+	callback := func(chunk string) { chunks = append(chunks, chunk) }
+
+	_, err := provider.Stream(ctx, []Message{{Role: RoleUser, Content: prompt}}, 0.5, callback)
+	if err == nil {
+		t.Error("Expected context cancellation error")
+	}
+}
+
+func TestMockStreamingProvider_Unavailable(t *testing.T) {
+	provider := NewMockStreamingProvider(5)
+	provider.SetAvailable(false)
+
+	ctx := context.Background()
+	_, err := provider.Stream(ctx, []Message{{Role: RoleUser, Content: "test"}}, 0.5, func(_ string) {})
+	if err == nil {
+		t.Error("Expected error from unavailable provider")
+	}
+}
+
 func TestMockStreamingProvider_NilCallback(t *testing.T) {
 	provider := NewMockStreamingProvider(5)
 	ctx := context.Background()

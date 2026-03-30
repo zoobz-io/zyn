@@ -154,7 +154,7 @@ func TestSynapseRequest(t *testing.T) {
 	t.Run("stream_callback_field", func(t *testing.T) {
 		called := false
 		req := SynapseRequest{
-			StreamCallback: func(chunk string) { called = true },
+			StreamCallback: func(_ string) { called = true },
 		}
 		req.StreamCallback("test")
 		if !called {
@@ -164,7 +164,7 @@ func TestSynapseRequest(t *testing.T) {
 }
 
 func TestStreamingProvider(t *testing.T) {
-	t.Run("simple", func(t *testing.T) {
+	t.Run("simple", func(_ *testing.T) {
 		// MockStreamingProvider satisfies StreamingProvider
 		var _ StreamingProvider = NewMockStreamingProvider(5)
 	})
@@ -178,7 +178,7 @@ func TestStreamingProvider(t *testing.T) {
 		}
 	})
 
-	t.Run("chaining", func(t *testing.T) {
+	t.Run("chaining", func(_ *testing.T) {
 		// MockStreamingProvider also satisfies Provider
 		var _ Provider = NewMockStreamingProvider(5)
 	})

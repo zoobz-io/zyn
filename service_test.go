@@ -198,6 +198,34 @@ func TestService_StreamExecute(t *testing.T) {
 	})
 }
 
+func TestService_StreamExecute_SessionUpdate(t *testing.T) {
+	// Verify session is updated after successful streaming
+	provider := &mockFixedStreamingProvider{
+		response:  `{"decision": true, "confidence": 0.9, "reasoning": ["streamed"]}`,
+		chunkSize: 10,
+	}
+	pipeline := NewTerminal(provider)
+	service := NewService[BinaryResponse](pipeline, "test", provider, DefaultTemperatureDeterministic)
+
+	session := NewSession()
+	ctx := context.Background()
+	prompt := &Prompt{Task: "test", Input: "test", Schema: "{}"}
+
+	var chunks []string
+	_, err := service.StreamExecute(ctx, session, prompt, 0.5, func(chunk string) {
+		chunks = append(chunks, chunk)
+	})
+	if err != nil {
+		t.Fatalf("StreamExecute failed: %v", err)
+	}
+	if session.Len() != 2 {
+		t.Errorf("Expected 2 messages in session, got %d", session.Len())
+	}
+	if len(chunks) == 0 {
+		t.Error("Expected chunks from streaming provider")
+	}
+}
+
 // mockFixedStreamingProvider is a test helper that returns a fixed response via streaming.
 type mockFixedStreamingProvider struct {
 	response  string
