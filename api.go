@@ -40,6 +40,21 @@ type Provider interface {
 	Name() string
 }
 
+// StreamCallback receives chunks of streamed response text as they arrive from the provider.
+// Compatible with chit's Emitter model for real-time token delivery.
+type StreamCallback func(chunk string)
+
+// StreamingProvider is an optional interface for providers that support streaming.
+// Providers that implement this deliver tokens via the callback during execution.
+// The returned ProviderResponse contains the full assembled content and usage stats
+// after streaming completes, identical to what Call would return.
+//
+// Providers that do not implement this interface fall back to standard Call behavior
+// transparently — the terminal processor handles the type assertion.
+type StreamingProvider interface {
+	Stream(ctx context.Context, messages []Message, temperature float32, callback StreamCallback) (*ProviderResponse, error)
+}
+
 // Validator defines the interface for response validation.
 // All response types must implement this to ensure LLM outputs are valid.
 type Validator interface {
@@ -104,8 +119,9 @@ const (
 // It contains the prompt, parameters, session, and response data.
 type SynapseRequest struct {
 	// Input fields
-	Prompt      *Prompt // The structured prompt to send to LLM
-	Temperature float32 // Temperature parameter for response generation
+	Prompt         *Prompt        // The structured prompt to send to LLM
+	Temperature    float32        // Temperature parameter for response generation
+	StreamCallback StreamCallback // Receives streamed chunks during provider execution. Nil for non-streaming.
 
 	// Session fields
 	SessionID string    // ID of the conversation session

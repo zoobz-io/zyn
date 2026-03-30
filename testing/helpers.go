@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -416,4 +417,60 @@ func (a *UsageAccumulator) Reset() {
 	a.completionTokens.Store(0)
 	a.totalTokens.Store(0)
 	a.callCount.Store(0)
+}
+
+// StreamRecorder records chunks delivered during streaming for test assertions.
+type StreamRecorder struct {
+	chunks []string
+	mu     sync.Mutex
+}
+
+// NewStreamRecorder creates a new StreamRecorder.
+func NewStreamRecorder() *StreamRecorder {
+	return &StreamRecorder{
+		chunks: make([]string, 0),
+	}
+}
+
+// Callback returns a StreamCallback that records chunks.
+func (r *StreamRecorder) Callback() zyn.StreamCallback {
+	return func(chunk string) {
+		r.mu.Lock()
+		defer r.mu.Unlock()
+		r.chunks = append(r.chunks, chunk)
+	}
+}
+
+// Chunks returns a copy of all recorded chunks.
+func (r *StreamRecorder) Chunks() []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	chunks := make([]string, len(r.chunks))
+	copy(chunks, r.chunks)
+	return chunks
+}
+
+// Combined returns all chunks joined into a single string.
+func (r *StreamRecorder) Combined() string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var b strings.Builder
+	for _, chunk := range r.chunks {
+		b.WriteString(chunk)
+	}
+	return b.String()
+}
+
+// ChunkCount returns the number of chunks recorded.
+func (r *StreamRecorder) ChunkCount() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return len(r.chunks)
+}
+
+// Reset clears all recorded chunks.
+func (r *StreamRecorder) Reset() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.chunks = make([]string, 0)
 }

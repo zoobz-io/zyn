@@ -95,6 +95,27 @@ func (t *TransformSynapse) FireWithInput(ctx context.Context, session *Session, 
 	return response.Output, nil
 }
 
+// FireStream performs the transformation with streaming, delivering chunks via callback.
+// If the provider does not implement StreamingProvider, the callback is not invoked
+// and execution falls back to the standard non-streaming path.
+func (t *TransformSynapse) FireStream(ctx context.Context, session *Session, text string, callback StreamCallback) (string, error) {
+	input := TransformInput{Text: text}
+	return t.FireStreamWithInput(ctx, session, input, callback)
+}
+
+// FireStreamWithInput performs the transformation with rich input and streaming.
+// If the provider does not implement StreamingProvider, the callback is not invoked
+// and execution falls back to the standard non-streaming path.
+func (t *TransformSynapse) FireStreamWithInput(ctx context.Context, session *Session, input TransformInput, callback StreamCallback) (string, error) {
+	merged := t.mergeInputs(input)
+	prompt := t.buildPrompt(merged)
+	response, err := t.service.StreamExecute(ctx, session, prompt, merged.Temperature, callback)
+	if err != nil {
+		return "", fmt.Errorf("transform stream failed: %w", err)
+	}
+	return response.Output, nil
+}
+
 // FireWithInputDetails performs the transformation and returns full details.
 func (t *TransformSynapse) FireWithInputDetails(ctx context.Context, session *Session, input TransformInput) (*TransformResponse, error) {
 	// Merge defaults with user input
