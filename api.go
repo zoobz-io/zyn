@@ -70,15 +70,19 @@ type TokenUsage struct {
 
 // ProviderResponse contains the response from an LLM provider.
 type ProviderResponse struct {
-	Content string     // The text response content
-	Usage   TokenUsage // Token usage statistics
+	Content    string     // The text response content (may be empty for pure tool_use responses)
+	ToolCalls  []ToolCall // Tool use requests from the model (nil for text-only responses)
+	StopReason string     // Why the model stopped: "end_turn", "tool_use", "max_tokens", etc.
+	Usage      TokenUsage // Token usage statistics
 }
 
 // Message represents a single message in a conversation.
 // Messages are exchanged between the user and the assistant (LLM).
 type Message struct {
-	Role    string // RoleUser, RoleAssistant, or RoleSystem
-	Content string // The message content
+	Role       string     // RoleUser, RoleAssistant, RoleSystem, or RoleTool
+	Content    string     // The message content
+	ToolCalls  []ToolCall // For assistant messages that include tool use (nil for non-tool messages)
+	ToolCallID string     // For tool result messages — references a ToolCall.ID
 }
 
 // Role constants for message types.
@@ -86,6 +90,14 @@ const (
 	RoleUser      = "user"
 	RoleAssistant = "assistant"
 	RoleSystem    = "system"
+	RoleTool      = "tool"
+)
+
+// StopReason constants indicate why the model stopped generating.
+const (
+	StopReasonEndTurn   = "end_turn"
+	StopReasonToolUse   = "tool_use"
+	StopReasonMaxTokens = "max_tokens"
 )
 
 // Default temperature constants for different synapse types.
