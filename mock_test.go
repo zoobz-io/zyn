@@ -740,6 +740,78 @@ func TestMockToolProvider_Unavailable(t *testing.T) {
 	}
 }
 
+func TestNewMockToolStreamingProvider(t *testing.T) {
+	t.Run("simple", func(t *testing.T) {
+		provider := NewMockToolStreamingProvider()
+		if provider == nil {
+			t.Fatal("NewMockToolStreamingProvider returned nil")
+		}
+		if provider.Name() != "mock-tool-streaming" {
+			t.Errorf("Expected name 'mock-tool-streaming', got '%s'", provider.Name())
+		}
+	})
+
+	t.Run("reliability", func(t *testing.T) {
+		// Emits events for tool calls
+		provider := NewMockToolStreamingProvider()
+		var events []StreamEvent
+		callback := func(e StreamEvent) { events = append(events, e) }
+
+		ctx := context.Background()
+		tools := []Tool{{Name: "get_weather"}}
+		resp, err := provider.StreamWithTools(ctx, nil, 0.5, tools, callback)
+		if err != nil {
+			t.Fatalf("StreamWithTools failed: %v", err)
+		}
+		if resp.StopReason != StopReasonToolUse {
+			t.Errorf("Expected StopReason='tool_use', got '%s'", resp.StopReason)
+		}
+		// Should have tool_start, tool_delta (for empty input {}), tool_end
+		hasStart := false
+		hasEnd := false
+		for _, e := range events {
+			if e.Type == StreamEventToolStart {
+				hasStart = true
+			}
+			if e.Type == StreamEventToolEnd {
+				hasEnd = true
+			}
+		}
+		if !hasStart {
+			t.Error("Expected tool_start event")
+		}
+		if !hasEnd {
+			t.Error("Expected tool_end event")
+		}
+	})
+
+	t.Run("chaining", func(t *testing.T) {
+		// Nil callback — no events, still returns response
+		provider := NewMockToolStreamingProvider()
+		ctx := context.Background()
+		tools := []Tool{{Name: "search"}}
+		resp, err := provider.StreamWithTools(ctx, nil, 0.5, tools, nil)
+		if err != nil {
+			t.Fatalf("StreamWithTools with nil callback failed: %v", err)
+		}
+		if len(resp.ToolCalls) != 1 {
+			t.Errorf("Expected 1 tool call, got %d", len(resp.ToolCalls))
+		}
+	})
+}
+
+func TestMockToolStreamingProvider_ContextCancellation(t *testing.T) {
+	provider := NewMockToolStreamingProvider()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	tools := []Tool{{Name: "search"}}
+	_, err := provider.StreamWithTools(ctx, nil, 0.5, tools, func(_ StreamEvent) {})
+	if err == nil {
+		t.Error("Expected context cancellation error")
+	}
+}
+
 func TestMockProviderFixed_Name(t *testing.T) {
 	provider := NewMockProviderWithResponse(`{"test": "value"}`)
 	name := provider.Name()

@@ -65,6 +65,17 @@ type ToolProvider interface {
 	CallWithTools(ctx context.Context, messages []Message, temperature float32, tools []Tool) (*ProviderResponse, error)
 }
 
+// ToolStreamingProvider is an optional interface for providers that support
+// streaming with tool use. Providers that implement this deliver typed events
+// (text chunks, tool call starts/deltas/ends) via StreamEventCallback while
+// executing a tool-enabled request.
+//
+// The returned ProviderResponse contains the full assembled content, tool calls,
+// and usage stats after streaming completes.
+type ToolStreamingProvider interface {
+	StreamWithTools(ctx context.Context, messages []Message, temperature float32, tools []Tool, callback StreamEventCallback) (*ProviderResponse, error)
+}
+
 // Validator defines the interface for response validation.
 // All response types must implement this to ensure LLM outputs are valid.
 type Validator interface {
@@ -143,8 +154,9 @@ type SynapseRequest struct {
 	// Input fields
 	Prompt         *Prompt        // The structured prompt to send to LLM
 	Temperature    float32        // Temperature parameter for response generation
-	StreamCallback StreamCallback // Receives streamed chunks during provider execution. Nil for non-streaming.
-	Tools          []Tool         // Tool definitions for the provider. Nil for non-tool calls.
+	StreamCallback      StreamCallback      // Receives streamed text chunks. Nil for non-streaming.
+	StreamEventCallback StreamEventCallback // Receives typed stream events (text + tool). Nil for non-event-streaming.
+	Tools               []Tool              // Tool definitions for the provider. Nil for non-tool calls.
 
 	// Session fields
 	SessionID string    // ID of the conversation session

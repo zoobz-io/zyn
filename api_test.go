@@ -321,4 +321,34 @@ func TestSynapseRequest_ToolsField(t *testing.T) {
 			t.Errorf("expected tool name 'search', got '%s'", req.Tools[0].Name)
 		}
 	})
+
+	t.Run("stream_event_callback_field", func(t *testing.T) {
+		req := SynapseRequest{}
+		if req.StreamEventCallback != nil {
+			t.Error("zero-value SynapseRequest should have nil StreamEventCallback")
+		}
+	})
+}
+
+func TestToolStreamingProvider(t *testing.T) {
+	t.Run("simple", func(_ *testing.T) {
+		var _ ToolStreamingProvider = NewMockToolStreamingProvider()
+	})
+
+	t.Run("reliability", func(t *testing.T) {
+		// Regular MockToolProvider does NOT implement ToolStreamingProvider
+		var provider ToolProvider = NewMockToolProvider()
+		_, ok := provider.(ToolStreamingProvider)
+		if ok {
+			t.Error("MockToolProvider should not implement ToolStreamingProvider")
+		}
+	})
+
+	t.Run("chaining", func(_ *testing.T) {
+		// MockToolStreamingProvider also satisfies ToolProvider and Provider
+		p := NewMockToolStreamingProvider()
+		var _ Provider = p
+		var _ ToolProvider = p
+		var _ ToolStreamingProvider = p
+	})
 }

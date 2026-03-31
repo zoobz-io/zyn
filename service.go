@@ -50,10 +50,16 @@ func NewTerminal(provider Provider) pipz.Chainable[*SynapseRequest] {
 		}
 
 		// Route to the appropriate provider method based on request capabilities.
-		// Tools take priority when present. Streaming without tools uses the stream path.
+		// Priority: tools+streaming → tools → text streaming → standard call.
 		var resp *ProviderResponse
 		var err error
-		if len(req.Tools) > 0 {
+		if len(req.Tools) > 0 && req.StreamEventCallback != nil {
+			tsp, ok := provider.(ToolStreamingProvider)
+			if !ok {
+				return req, fmt.Errorf("provider %s does not support streaming with tools", provider.Name())
+			}
+			resp, err = tsp.StreamWithTools(ctx, messages, req.Temperature, req.Tools, req.StreamEventCallback)
+		} else if len(req.Tools) > 0 {
 			tp, ok := provider.(ToolProvider)
 			if !ok {
 				return req, fmt.Errorf("provider %s does not support tools", provider.Name())

@@ -474,3 +474,74 @@ func (r *StreamRecorder) Reset() {
 	defer r.mu.Unlock()
 	r.chunks = make([]string, 0)
 }
+
+// StreamEventRecorder records typed stream events for test assertions.
+type StreamEventRecorder struct {
+	events []zyn.StreamEvent
+	mu     sync.Mutex
+}
+
+// NewStreamEventRecorder creates a new StreamEventRecorder.
+func NewStreamEventRecorder() *StreamEventRecorder {
+	return &StreamEventRecorder{
+		events: make([]zyn.StreamEvent, 0),
+	}
+}
+
+// Callback returns a StreamEventCallback that records events.
+func (r *StreamEventRecorder) Callback() zyn.StreamEventCallback {
+	return func(event zyn.StreamEvent) {
+		r.mu.Lock()
+		defer r.mu.Unlock()
+		r.events = append(r.events, event)
+	}
+}
+
+// Events returns a copy of all recorded events.
+func (r *StreamEventRecorder) Events() []zyn.StreamEvent {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	events := make([]zyn.StreamEvent, len(r.events))
+	copy(events, r.events)
+	return events
+}
+
+// EventCount returns the number of events recorded.
+func (r *StreamEventRecorder) EventCount() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return len(r.events)
+}
+
+// TextEvents returns only text events.
+func (r *StreamEventRecorder) TextEvents() []zyn.StreamEvent {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var texts []zyn.StreamEvent
+	for _, e := range r.events {
+		if e.Type == zyn.StreamEventText {
+			texts = append(texts, e)
+		}
+	}
+	return texts
+}
+
+// ToolStartEvents returns only tool_start events.
+func (r *StreamEventRecorder) ToolStartEvents() []zyn.StreamEvent {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var starts []zyn.StreamEvent
+	for _, e := range r.events {
+		if e.Type == zyn.StreamEventToolStart {
+			starts = append(starts, e)
+		}
+	}
+	return starts
+}
+
+// Reset clears all recorded events.
+func (r *StreamEventRecorder) Reset() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.events = make([]zyn.StreamEvent, 0)
+}
