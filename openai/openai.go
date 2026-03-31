@@ -61,6 +61,73 @@ func (p *Provider) Name() string {
 // Call sends messages to OpenAI and returns the response with usage stats.
 // OpenAI automatically handles prompt caching for prompts >1024 tokens.
 func (p *Provider) Call(ctx context.Context, messages []zyn.Message, temperature float32) (*zyn.ProviderResponse, error) {
+	requestBody := chatCompletionRequest{
+		Model:       p.model,
+		Messages:    convertMessages(messages),
+		Temperature: temperature,
+		ResponseFormat: &responseFormat{
+			Type: "json_object",
+		},
+	}
+	return p.do(ctx, requestBody)
+}
+
+// CallWithTools sends messages with tool definitions to OpenAI.
+// The response may contain tool calls instead of (or alongside) text content.
+// When tool calls are present, the caller should execute the tools and send
+// results back as RoleTool messages in a subsequent call.
+func (p *Provider) CallWithTools(ctx context.Context, messages []zyn.Message, temperature float32, tools []zyn.Tool) (*zyn.ProviderResponse, error) {
+	apiTools := make([]tool, len(tools))
+	for i, t := range tools {
+		apiTools[i] = tool{
+			Type: "function",
+			Function: toolFunction{
+				Name:        t.Name,
+				Description: t.Description,
+				Parameters:  t.Parameters,
+			},
+		}
+	}
+
+	requestBody := chatCompletionRequest{
+		Model:       p.model,
+		Messages:    convertMessages(messages),
+		Temperature: temperature,
+		Tools:       apiTools,
+	}
+	return p.do(ctx, requestBody)
+}
+
+// convertMessages converts zyn messages to OpenAI wire format.
+func convertMessages(messages []zyn.Message) []message {
+	apiMessages := make([]message, len(messages))
+	for i, msg := range messages {
+		m := message{
+			Role:       msg.Role,
+			Content:    msg.Content,
+			ToolCallID: msg.ToolCallID,
+		}
+		// Convert tool calls from zyn format to OpenAI format
+		if len(msg.ToolCalls) > 0 {
+			m.ToolCalls = make([]toolCall, len(msg.ToolCalls))
+			for j, tc := range msg.ToolCalls {
+				m.ToolCalls[j] = toolCall{
+					ID:   tc.ID,
+					Type: "function",
+					Function: toolCallFunction{
+						Name:      tc.Name,
+						Arguments: string(tc.Input),
+					},
+				}
+			}
+		}
+		apiMessages[i] = m
+	}
+	return apiMessages
+}
+
+// do executes the HTTP request and parses the response.
+func (p *Provider) do(ctx context.Context, requestBody chatCompletionRequest) (*zyn.ProviderResponse, error) {
 	startTime := time.Now()
 
 	// Emit provider.call.started hook
@@ -68,25 +135,6 @@ func (p *Provider) Call(ctx context.Context, messages []zyn.Message, temperature
 		zyn.ProviderKey.Field(p.name),
 		zyn.ModelKey.Field(p.model),
 	)
-
-	// Convert zyn.Message to openai message format
-	apiMessages := make([]message, len(messages))
-	for i, msg := range messages {
-		apiMessages[i] = message{
-			Role:    msg.Role,
-			Content: msg.Content,
-		}
-	}
-
-	// Build request body with JSON mode enabled
-	requestBody := chatCompletionRequest{
-		Model:       p.model,
-		Messages:    apiMessages,
-		Temperature: temperature,
-		ResponseFormat: &responseFormat{
-			Type: "json_object",
-		},
-	}
 
 	jsonBody, err := json.Marshal(requestBody)
 	if err != nil {
@@ -117,38 +165,7 @@ func (p *Provider) Call(ctx context.Context, messages []zyn.Message, temperature
 
 	// Handle errors
 	if resp.StatusCode != http.StatusOK {
-		duration := time.Since(startTime)
-		var errorResp errorResponse
-
-		// Emit provider.call.failed hook
-		fields := []capitan.Field{
-			zyn.ProviderKey.Field(p.name),
-			zyn.ModelKey.Field(p.model),
-			zyn.HTTPStatusCodeKey.Field(resp.StatusCode),
-			zyn.DurationMsKey.Field(int(duration.Milliseconds())),
-		}
-
-		if err := json.Unmarshal(body, &errorResp); err == nil && errorResp.Error.Message != "" {
-			fields = append(fields,
-				zyn.ErrorKey.Field(errorResp.Error.Message),
-				zyn.APIErrorTypeKey.Field(errorResp.Error.Type),
-			)
-			if errorResp.Error.Code != "" {
-				fields = append(fields, zyn.APIErrorCodeKey.Field(errorResp.Error.Code))
-			}
-
-			capitan.Error(ctx, zyn.ProviderCallFailed, fields...)
-
-			// Check for rate limit
-			if resp.StatusCode == http.StatusTooManyRequests {
-				return nil, fmt.Errorf("rate limit exceeded: %s", errorResp.Error.Message)
-			}
-			return nil, fmt.Errorf("openai error (%d): %s", resp.StatusCode, errorResp.Error.Message)
-		}
-
-		fields = append(fields, zyn.ErrorKey.Field(fmt.Sprintf("status %d", resp.StatusCode)))
-		capitan.Error(ctx, zyn.ProviderCallFailed, fields...)
-		return nil, fmt.Errorf("openai error: status %d", resp.StatusCode)
+		return nil, p.handleError(ctx, body, resp.StatusCode, startTime)
 	}
 
 	// Parse successful response
@@ -177,20 +194,85 @@ func (p *Provider) Call(ctx context.Context, messages []zyn.Message, temperature
 		zyn.ResponseCreatedKey.Field(int(completionResp.Created)),
 	}
 
-	if len(completionResp.Choices) > 0 && completionResp.Choices[0].FinishReason != "" {
+	if completionResp.Choices[0].FinishReason != "" {
 		fields = append(fields, zyn.ResponseFinishReasonKey.Field(completionResp.Choices[0].FinishReason))
 	}
 
 	capitan.Info(ctx, zyn.ProviderCallCompleted, fields...)
 
-	return &zyn.ProviderResponse{
-		Content: completionResp.Choices[0].Message.Content,
+	// Build response with tool calls if present
+	choice := completionResp.Choices[0]
+	providerResp := &zyn.ProviderResponse{
+		Content:    choice.Message.Content,
+		StopReason: mapFinishReason(choice.FinishReason),
 		Usage: zyn.TokenUsage{
 			Prompt:     completionResp.Usage.PromptTokens,
 			Completion: completionResp.Usage.CompletionTokens,
 			Total:      completionResp.Usage.TotalTokens,
 		},
-	}, nil
+	}
+
+	// Map tool calls from OpenAI format to zyn format
+	if len(choice.Message.ToolCalls) > 0 {
+		providerResp.ToolCalls = make([]zyn.ToolCall, len(choice.Message.ToolCalls))
+		for i, tc := range choice.Message.ToolCalls {
+			providerResp.ToolCalls[i] = zyn.ToolCall{
+				ID:    tc.ID,
+				Name:  tc.Function.Name,
+				Input: json.RawMessage(tc.Function.Arguments),
+			}
+		}
+	}
+
+	return providerResp, nil
+}
+
+// handleError processes error responses from OpenAI.
+func (p *Provider) handleError(ctx context.Context, body []byte, statusCode int, startTime time.Time) error {
+	duration := time.Since(startTime)
+	var errorResp errorResponse
+
+	fields := []capitan.Field{
+		zyn.ProviderKey.Field(p.name),
+		zyn.ModelKey.Field(p.model),
+		zyn.HTTPStatusCodeKey.Field(statusCode),
+		zyn.DurationMsKey.Field(int(duration.Milliseconds())),
+	}
+
+	if err := json.Unmarshal(body, &errorResp); err == nil && errorResp.Error.Message != "" {
+		fields = append(fields,
+			zyn.ErrorKey.Field(errorResp.Error.Message),
+			zyn.APIErrorTypeKey.Field(errorResp.Error.Type),
+		)
+		if errorResp.Error.Code != "" {
+			fields = append(fields, zyn.APIErrorCodeKey.Field(errorResp.Error.Code))
+		}
+
+		capitan.Error(ctx, zyn.ProviderCallFailed, fields...)
+
+		if statusCode == http.StatusTooManyRequests {
+			return fmt.Errorf("rate limit exceeded: %s", errorResp.Error.Message)
+		}
+		return fmt.Errorf("openai error (%d): %s", statusCode, errorResp.Error.Message)
+	}
+
+	fields = append(fields, zyn.ErrorKey.Field(fmt.Sprintf("status %d", statusCode)))
+	capitan.Error(ctx, zyn.ProviderCallFailed, fields...)
+	return fmt.Errorf("openai error: status %d", statusCode)
+}
+
+// mapFinishReason converts OpenAI finish reasons to zyn StopReason constants.
+func mapFinishReason(reason string) string {
+	switch reason {
+	case "stop":
+		return zyn.StopReasonEndTurn
+	case "tool_calls":
+		return zyn.StopReasonToolUse
+	case "length":
+		return zyn.StopReasonMaxTokens
+	default:
+		return reason
+	}
 }
 
 // Request/Response types for OpenAI API
@@ -204,11 +286,36 @@ type chatCompletionRequest struct {
 	Messages       []message       `json:"messages"`
 	Temperature    float32         `json:"temperature"`
 	ResponseFormat *responseFormat `json:"response_format,omitempty"`
+	Tools          []tool          `json:"tools,omitempty"`
 }
 
 type message struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
+	Role       string     `json:"role"`
+	Content    string     `json:"content"`
+	ToolCalls  []toolCall `json:"tool_calls,omitempty"`
+	ToolCallID string     `json:"tool_call_id,omitempty"`
+}
+
+type tool struct {
+	Type     string       `json:"type"`
+	Function toolFunction `json:"function"`
+}
+
+type toolFunction struct {
+	Name        string          `json:"name"`
+	Description string          `json:"description,omitempty"`
+	Parameters  json.RawMessage `json:"parameters,omitempty"`
+}
+
+type toolCall struct {
+	ID       string           `json:"id"`
+	Type     string           `json:"type"`
+	Function toolCallFunction `json:"function"`
+}
+
+type toolCallFunction struct {
+	Name      string `json:"name"`
+	Arguments string `json:"arguments"`
 }
 
 type chatCompletionResponse struct {
