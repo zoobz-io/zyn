@@ -2,6 +2,7 @@ package zyn
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 )
@@ -738,6 +739,219 @@ func TestMockToolProvider_Unavailable(t *testing.T) {
 	if err == nil {
 		t.Error("Expected error from unavailable provider")
 	}
+}
+
+func TestNewMockToolStreamingProvider(t *testing.T) {
+	t.Run("simple", func(t *testing.T) {
+		provider := NewMockToolStreamingProvider()
+		if provider == nil {
+			t.Fatal("NewMockToolStreamingProvider returned nil")
+		}
+		if provider.Name() != "mock-tool-streaming" {
+			t.Errorf("Expected name 'mock-tool-streaming', got '%s'", provider.Name())
+		}
+	})
+
+	t.Run("reliability", func(t *testing.T) {
+		// Emits events for tool calls
+		provider := NewMockToolStreamingProvider()
+		var events []StreamEvent
+		callback := func(e StreamEvent) { events = append(events, e) }
+
+		ctx := context.Background()
+		tools := []Tool{{Name: "get_weather"}}
+		resp, err := provider.StreamWithTools(ctx, nil, 0.5, tools, callback)
+		if err != nil {
+			t.Fatalf("StreamWithTools failed: %v", err)
+		}
+		if resp.StopReason != StopReasonToolUse {
+			t.Errorf("Expected StopReason='tool_use', got '%s'", resp.StopReason)
+		}
+		// Should have tool_start, tool_delta (for empty input {}), tool_end
+		hasStart := false
+		hasEnd := false
+		for _, e := range events {
+			if e.Type == StreamEventToolStart {
+				hasStart = true
+			}
+			if e.Type == StreamEventToolEnd {
+				hasEnd = true
+			}
+		}
+		if !hasStart {
+			t.Error("Expected tool_start event")
+		}
+		if !hasEnd {
+			t.Error("Expected tool_end event")
+		}
+	})
+
+	t.Run("chaining", func(t *testing.T) {
+		// Nil callback — no events, still returns response
+		provider := NewMockToolStreamingProvider()
+		ctx := context.Background()
+		tools := []Tool{{Name: "search"}}
+		resp, err := provider.StreamWithTools(ctx, nil, 0.5, tools, nil)
+		if err != nil {
+			t.Fatalf("StreamWithTools with nil callback failed: %v", err)
+		}
+		if len(resp.ToolCalls) != 1 {
+			t.Errorf("Expected 1 tool call, got %d", len(resp.ToolCalls))
+		}
+	})
+}
+
+func TestMockToolStreamingProvider_ErrorPath(t *testing.T) {
+	provider := NewMockToolStreamingProvider()
+	provider.SetAvailable(false)
+
+	var events []StreamEvent
+	_, err := provider.StreamWithTools(context.Background(), nil, 0.5, []Tool{{Name: "test"}}, func(e StreamEvent) {
+		events = append(events, e)
+	})
+	if err == nil {
+		t.Error("Expected error from unavailable provider")
+	}
+	if len(events) != 0 {
+		t.Error("Should not emit events on error")
+	}
+}
+
+func TestMockToolStreamingProvider_TextContent(t *testing.T) {
+	// Custom response with both text and tool calls to cover text emission path
+	provider := NewMockToolStreamingProvider()
+	provider.WithToolResponse(func(_ []Message, _ []Tool) *ProviderResponse {
+		return &ProviderResponse{
+			Content:    "Here is the result",
+			StopReason: StopReasonToolUse,
+			ToolCalls: []ToolCall{
+				{ID: "call_1", Name: "search", Input: json.RawMessage(`{"q":"test"}`)},
+			},
+			Usage: TokenUsage{Prompt: 100, Completion: 50, Total: 150},
+		}
+	})
+
+	var events []StreamEvent
+	callback := func(e StreamEvent) { events = append(events, e) }
+
+	resp, err := provider.StreamWithTools(context.Background(), nil, 0.5, []Tool{{Name: "search"}}, callback)
+	if err != nil {
+		t.Fatalf("StreamWithTools failed: %v", err)
+	}
+	if resp.Content != "Here is the result" {
+		t.Errorf("Expected content 'Here is the result', got '%s'", resp.Content)
+	}
+
+	// Should have text event + tool_start + tool_delta + tool_end
+	hasText := false
+	hasToolStart := false
+	for _, e := range events {
+		if e.Type == StreamEventText && e.Text == "Here is the result" {
+			hasText = true
+		}
+		if e.Type == StreamEventToolStart {
+			hasToolStart = true
+		}
+	}
+	if !hasText {
+		t.Error("Expected text event for content")
+	}
+	if !hasToolStart {
+		t.Error("Expected tool_start event")
+	}
+}
+
+func TestMockToolStreamingProvider_NoTools(t *testing.T) {
+	// No tools — returns text response with text event
+	provider := NewMockToolStreamingProvider()
+	var events []StreamEvent
+	callback := func(e StreamEvent) { events = append(events, e) }
+
+	resp, err := provider.StreamWithTools(context.Background(), nil, 0.5, nil, callback)
+	if err != nil {
+		t.Fatalf("StreamWithTools failed: %v", err)
+	}
+	if resp.Content == "" {
+		t.Error("Expected text content when no tools")
+	}
+	hasText := false
+	for _, e := range events {
+		if e.Type == StreamEventText {
+			hasText = true
+		}
+	}
+	if !hasText {
+		t.Error("Expected text event when no tools provided")
+	}
+}
+
+func TestMockToolStreamingProvider_ContextCancellation(t *testing.T) {
+	t.Run("before_call", func(t *testing.T) {
+		provider := NewMockToolStreamingProvider()
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		tools := []Tool{{Name: "search"}}
+		_, err := provider.StreamWithTools(ctx, nil, 0.5, tools, func(_ StreamEvent) {})
+		if err == nil {
+			t.Error("Expected context cancellation error")
+		}
+	})
+
+	t.Run("cancel_before_text", func(t *testing.T) {
+		// Context already canceled when text emission happens
+		provider := NewMockToolStreamingProvider()
+		provider.WithToolResponse(func(_ []Message, _ []Tool) *ProviderResponse {
+			return &ProviderResponse{
+				Content:    "some text",
+				StopReason: StopReasonEndTurn,
+				Usage:      TokenUsage{Prompt: 10, Completion: 5, Total: 15},
+			}
+		})
+
+		// CallWithTools doesn't check ctx, so cancel after construction but it will
+		// be detected at the select before text emission
+		ctx, cancel := context.WithCancel(context.Background())
+		// We need ctx canceled before the select runs. Use a callback that wraps
+		// a provider returning content. Cancel ctx right before calling StreamWithTools
+		// won't work because CallWithTools still succeeds.
+		// Instead, wrap with a provider that cancels ctx during CallWithTools:
+		cancel()
+		_, err := provider.StreamWithTools(ctx, nil, 0.5, nil, func(_ StreamEvent) {})
+		// CallWithTools on unavailable=true provider succeeds, but ctx is done
+		// so the select before text emission should catch it
+		if err == nil {
+			t.Error("Expected context cancellation error")
+		}
+	})
+
+	t.Run("cancel_before_tool_loop", func(t *testing.T) {
+		// Cancel in the text callback so tool loop hits ctx.Done
+		provider := NewMockToolStreamingProvider()
+		provider.WithToolResponse(func(_ []Message, _ []Tool) *ProviderResponse {
+			return &ProviderResponse{
+				Content:    "text first",
+				StopReason: StopReasonToolUse,
+				ToolCalls:  []ToolCall{{ID: "call_1", Name: "search", Input: json.RawMessage(`{}`)}},
+				Usage:      TokenUsage{Prompt: 10, Completion: 5, Total: 15},
+			}
+		})
+
+		ctx, cancel := context.WithCancel(context.Background())
+		var events []StreamEvent
+		callback := func(e StreamEvent) {
+			events = append(events, e)
+			cancel() // Cancel after first event (text), tool loop should see ctx.Done
+		}
+
+		_, err := provider.StreamWithTools(ctx, nil, 0.5, []Tool{{Name: "search"}}, callback)
+		if err == nil {
+			t.Error("Expected context cancellation error after callback cancels")
+		}
+		if len(events) == 0 {
+			t.Error("Expected at least one event before cancellation")
+		}
+	})
 }
 
 func TestMockProviderFixed_Name(t *testing.T) {

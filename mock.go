@@ -479,3 +479,74 @@ func (m *MockToolProvider) CallWithTools(_ context.Context, messages []Message, 
 		Usage: TokenUsage{Prompt: 100, Completion: 50, Total: 150},
 	}, nil
 }
+
+// MockToolStreamingProvider simulates streaming with tool use by emitting
+// StreamEvents for both text and tool calls. It implements Provider (via embedding),
+// ToolProvider (via MockToolProvider), and ToolStreamingProvider.
+type MockToolStreamingProvider struct {
+	MockToolProvider
+}
+
+// NewMockToolStreamingProvider creates a mock that simulates streaming with tools.
+func NewMockToolStreamingProvider() *MockToolStreamingProvider {
+	return &MockToolStreamingProvider{
+		MockToolProvider: MockToolProvider{
+			MockProvider: MockProvider{
+				name:      "mock-tool-streaming",
+				available: true,
+			},
+		},
+	}
+}
+
+// StreamWithTools simulates streaming a tool-using response by emitting events
+// for each piece of the response, then returning the full assembled result.
+func (m *MockToolStreamingProvider) StreamWithTools(ctx context.Context, messages []Message, temperature float32, tools []Tool, callback StreamEventCallback) (*ProviderResponse, error) {
+	// Get the full response using the non-streaming tool path
+	resp, err := m.CallWithTools(ctx, messages, temperature, tools)
+	if err != nil {
+		return nil, err
+	}
+
+	if callback == nil {
+		return resp, nil
+	}
+
+	// Emit text content as a text event
+	if resp.Content != "" {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		default:
+			callback(StreamEvent{Type: StreamEventText, Text: resp.Content})
+		}
+	}
+
+	// Emit tool calls as start/end events
+	for i, tc := range resp.ToolCalls {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		default:
+			tcCopy := tc
+			callback(StreamEvent{
+				Type:     StreamEventToolStart,
+				ToolCall: &tcCopy,
+				Index:    i,
+			})
+			if len(tc.Input) > 0 {
+				callback(StreamEvent{
+					Type:      StreamEventToolDelta,
+					ToolDelta: string(tc.Input),
+					Index:     i,
+				})
+			}
+			callback(StreamEvent{
+				Type:  StreamEventToolEnd,
+				Index: i,
+			})
+		}
+	}
+
+	return resp, nil
+}

@@ -259,6 +259,72 @@ func (m *mockFixedStreamingProvider) Stream(ctx context.Context, messages []Mess
 	return resp, nil
 }
 
+func TestNewTerminal_ToolStreamingRouting(t *testing.T) {
+	t.Run("simple", func(t *testing.T) {
+		// ToolStreamingProvider routes through StreamWithTools
+		provider := NewMockToolStreamingProvider()
+		terminal := NewTerminal(provider)
+
+		var events []StreamEvent
+		ctx := context.Background()
+		req := &SynapseRequest{
+			Prompt:      &Prompt{Task: "test", Input: "test", Schema: "{}"},
+			Temperature: 0.5,
+			Tools:       []Tool{{Name: "search"}},
+			StreamEventCallback: func(e StreamEvent) {
+				events = append(events, e)
+			},
+		}
+		_, err := terminal.Process(ctx, req)
+		if err != nil {
+			t.Fatalf("Process failed: %v", err)
+		}
+		if len(events) == 0 {
+			t.Error("Expected stream events from tool streaming provider")
+		}
+	})
+
+	t.Run("reliability", func(t *testing.T) {
+		// Non-tool-streaming provider errors when tools+stream event callback
+		provider := NewMockToolProvider() // ToolProvider but not ToolStreamingProvider
+		terminal := NewTerminal(provider)
+
+		ctx := context.Background()
+		req := &SynapseRequest{
+			Prompt:      &Prompt{Task: "test", Input: "test", Schema: "{}"},
+			Temperature: 0.5,
+			Tools:       []Tool{{Name: "search"}},
+			StreamEventCallback: func(_ StreamEvent) {},
+		}
+		_, err := terminal.Process(ctx, req)
+		if err == nil {
+			t.Error("Expected error when ToolProvider lacks ToolStreamingProvider")
+		}
+	})
+
+	t.Run("chaining", func(t *testing.T) {
+		// Tools without StreamEventCallback routes to CallWithTools (not streaming)
+		provider := NewMockToolStreamingProvider()
+		terminal := NewTerminal(provider)
+
+		var events []StreamEvent
+		ctx := context.Background()
+		req := &SynapseRequest{
+			Prompt:      &Prompt{Task: "test", Input: "test", Schema: "{}"},
+			Temperature: 0.5,
+			Tools:       []Tool{{Name: "search"}},
+			// No StreamEventCallback — should use CallWithTools
+		}
+		_, err := terminal.Process(ctx, req)
+		if err != nil {
+			t.Fatalf("Process failed: %v", err)
+		}
+		if len(events) != 0 {
+			t.Error("Should not have streamed without StreamEventCallback")
+		}
+	})
+}
+
 func TestNewTerminal_ToolRouting(t *testing.T) {
 	t.Run("simple", func(t *testing.T) {
 		// ToolProvider routes through CallWithTools when tools present

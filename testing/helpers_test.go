@@ -633,6 +633,59 @@ func TestStreamRecorder_ChunksReturnsCopy(t *testing.T) {
 	}
 }
 
+func TestStreamEventRecorder(t *testing.T) {
+	t.Run("simple", func(t *testing.T) {
+		recorder := NewStreamEventRecorder()
+		if recorder.EventCount() != 0 {
+			t.Error("New recorder should have 0 events")
+		}
+	})
+
+	t.Run("reliability", func(t *testing.T) {
+		recorder := NewStreamEventRecorder()
+		cb := recorder.Callback()
+		cb(zyn.StreamEvent{Type: zyn.StreamEventText, Text: "hello"})
+		cb(zyn.StreamEvent{Type: zyn.StreamEventToolStart, ToolCall: &zyn.ToolCall{ID: "1", Name: "search"}, Index: 0})
+		cb(zyn.StreamEvent{Type: zyn.StreamEventToolEnd, Index: 0})
+
+		if recorder.EventCount() != 3 {
+			t.Errorf("Expected 3 events, got %d", recorder.EventCount())
+		}
+		texts := recorder.TextEvents()
+		if len(texts) != 1 || texts[0].Text != "hello" {
+			t.Errorf("Unexpected text events: %v", texts)
+		}
+		starts := recorder.ToolStartEvents()
+		if len(starts) != 1 || starts[0].ToolCall.Name != "search" {
+			t.Errorf("Unexpected tool start events: %v", starts)
+		}
+	})
+
+	t.Run("chaining", func(t *testing.T) {
+		recorder := NewStreamEventRecorder()
+		cb := recorder.Callback()
+		cb(zyn.StreamEvent{Type: zyn.StreamEventText, Text: "a"})
+		recorder.Reset()
+		if recorder.EventCount() != 0 {
+			t.Error("Reset should clear events")
+		}
+	})
+}
+
+func TestStreamEventRecorder_EventsCopy(t *testing.T) {
+	recorder := NewStreamEventRecorder()
+	cb := recorder.Callback()
+	cb(zyn.StreamEvent{Type: zyn.StreamEventText, Text: "a"})
+
+	events := recorder.Events()
+	events[0].Text = "modified"
+
+	original := recorder.Events()
+	if original[0].Text != "a" {
+		t.Error("Events() should return a copy")
+	}
+}
+
 func TestSequencedProvider_EmptyResponses(t *testing.T) {
 	// Test with no responses - should use default error response
 	provider := NewSequencedProvider()
