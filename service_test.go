@@ -259,6 +259,64 @@ func (m *mockFixedStreamingProvider) Stream(ctx context.Context, messages []Mess
 	return resp, nil
 }
 
+func TestNewTerminal_ToolRouting(t *testing.T) {
+	t.Run("simple", func(t *testing.T) {
+		// ToolProvider routes through CallWithTools when tools present
+		provider := NewMockToolProvider()
+		terminal := NewTerminal(provider)
+
+		ctx := context.Background()
+		req := &SynapseRequest{
+			Prompt:      &Prompt{Task: "test", Input: "test", Schema: "{}"},
+			Temperature: 0.5,
+			Tools:       []Tool{{Name: "search", Description: "Search"}},
+		}
+		processed, err := terminal.Process(ctx, req)
+		if err != nil {
+			t.Fatalf("Process failed: %v", err)
+		}
+		if processed.Response != "" {
+			t.Errorf("Expected empty content for tool_use response, got '%s'", processed.Response)
+		}
+	})
+
+	t.Run("reliability", func(t *testing.T) {
+		// Non-tool provider errors when tools are passed
+		provider := NewMockProvider()
+		terminal := NewTerminal(provider)
+
+		ctx := context.Background()
+		req := &SynapseRequest{
+			Prompt:      &Prompt{Task: "test", Input: "test", Schema: "{}"},
+			Temperature: 0.5,
+			Tools:       []Tool{{Name: "search"}},
+		}
+		_, err := terminal.Process(ctx, req)
+		if err == nil {
+			t.Error("Expected error when non-tool provider receives tools")
+		}
+	})
+
+	t.Run("chaining", func(t *testing.T) {
+		// No tools — falls through to standard Call even on a ToolProvider
+		provider := NewMockToolProvider()
+		terminal := NewTerminal(provider)
+
+		ctx := context.Background()
+		req := &SynapseRequest{
+			Prompt:      &Prompt{Task: "test", Input: "test", Schema: "{}"},
+			Temperature: 0.5,
+		}
+		processed, err := terminal.Process(ctx, req)
+		if err != nil {
+			t.Fatalf("Process without tools failed: %v", err)
+		}
+		if processed.Response == "" {
+			t.Error("Expected non-empty response from standard Call path")
+		}
+	})
+}
+
 func TestService_Execute(t *testing.T) {
 	t.Run("simple", func(t *testing.T) {
 		provider := NewMockProvider()
