@@ -259,6 +259,116 @@ func (m *mockFixedStreamingProvider) Stream(ctx context.Context, messages []Mess
 	return resp, nil
 }
 
+func TestNewRawTerminal(t *testing.T) {
+	t.Run("simple", func(t *testing.T) {
+		// Raw terminal uses messages as-is and populates StopReason/ResponseCalls
+		provider := NewMockToolProvider()
+		terminal := NewRawTerminal(provider)
+
+		ctx := context.Background()
+		req := &SynapseRequest{
+			Messages:    []Message{{Role: RoleUser, Content: "test"}},
+			Temperature: 0.5,
+			Tools:       []Tool{{Name: "search"}},
+		}
+		processed, err := terminal.Process(ctx, req)
+		if err != nil {
+			t.Fatalf("Process failed: %v", err)
+		}
+		if processed.StopReason != StopReasonToolUse {
+			t.Errorf("Expected StopReason='tool_use', got '%s'", processed.StopReason)
+		}
+		if len(processed.ResponseCalls) != 1 {
+			t.Errorf("Expected 1 ResponseCall, got %d", len(processed.ResponseCalls))
+		}
+	})
+
+	t.Run("reliability", func(t *testing.T) {
+		// Non-tool provider with tools returns error
+		provider := NewMockProvider()
+		terminal := NewRawTerminal(provider)
+
+		ctx := context.Background()
+		req := &SynapseRequest{
+			Messages:    []Message{{Role: RoleUser, Content: "test"}},
+			Temperature: 0.5,
+			Tools:       []Tool{{Name: "search"}},
+		}
+		_, err := terminal.Process(ctx, req)
+		if err == nil {
+			t.Error("Expected error when non-tool provider receives tools")
+		}
+	})
+
+	t.Run("chaining", func(t *testing.T) {
+		// No tools falls through to standard Call
+		provider := NewMockProviderWithResponse(`{"decision": true, "confidence": 0.9, "reasoning": ["test"]}`)
+		terminal := NewRawTerminal(provider)
+
+		ctx := context.Background()
+		req := &SynapseRequest{
+			Messages:    []Message{{Role: RoleUser, Content: "test"}},
+			Temperature: 0.5,
+		}
+		processed, err := terminal.Process(ctx, req)
+		if err != nil {
+			t.Fatalf("Process failed: %v", err)
+		}
+		if processed.Response == "" {
+			t.Error("Expected non-empty response from standard Call path")
+		}
+	})
+}
+
+func TestNewRawTerminal_StreamingWithTools(t *testing.T) {
+	t.Run("routes_to_stream_with_tools", func(t *testing.T) {
+		provider := NewMockToolStreamingProvider()
+		provider.WithToolResponse(func(_ []Message, _ []Tool) *ProviderResponse {
+			return &ProviderResponse{
+				Content:    "streamed",
+				StopReason: StopReasonEndTurn,
+				Usage:      TokenUsage{Prompt: 10, Completion: 5, Total: 15},
+			}
+		})
+		terminal := NewRawTerminal(provider)
+
+		var events []StreamEvent
+		req := &SynapseRequest{
+			Messages:            []Message{{Role: RoleUser, Content: "test"}},
+			Temperature:         0.5,
+			Tools:               []Tool{{Name: "search"}},
+			StreamEventCallback: func(e StreamEvent) { events = append(events, e) },
+		}
+		processed, err := terminal.Process(context.Background(), req)
+		if err != nil {
+			t.Fatalf("Process failed: %v", err)
+		}
+		if processed.StopReason != StopReasonEndTurn {
+			t.Errorf("Expected StopReason='end_turn', got '%s'", processed.StopReason)
+		}
+		if len(events) == 0 {
+			t.Error("Expected stream events")
+		}
+	})
+
+	t.Run("error_without_tool_streaming", func(t *testing.T) {
+		// ToolProvider without ToolStreamingProvider errors on streaming+tools
+		provider := NewMockToolProvider()
+		terminal := NewRawTerminal(provider)
+
+		req := &SynapseRequest{
+			Messages:            []Message{{Role: RoleUser, Content: "test"}},
+			Temperature:         0.5,
+			Tools:               []Tool{{Name: "search"}},
+			StreamEventCallback: func(_ StreamEvent) {},
+		}
+		_, err := terminal.Process(context.Background(), req)
+		if err == nil {
+			t.Error("Expected error when ToolProvider lacks ToolStreamingProvider")
+		}
+	})
+}
+
 func TestNewTerminal_ToolStreamingRouting(t *testing.T) {
 	t.Run("simple", func(t *testing.T) {
 		// ToolStreamingProvider routes through StreamWithTools

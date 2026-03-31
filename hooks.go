@@ -11,6 +11,8 @@ var (
 	ProviderCallCompleted = capitan.NewSignal("llm.provider.call.completed", "LLM provider HTTP call succeeded with token usage and timing metrics")
 	ProviderCallFailed    = capitan.NewSignal("llm.provider.call.failed", "LLM provider HTTP call failed with status code and API error details")
 	ResponseParseFailed   = capitan.NewSignal("llm.response.failed", "LLM response parsing failed with validation or JSON decode error")
+	ToolLoopIteration     = capitan.NewSignal("llm.toolloop.iteration", "Tool loop iteration completed with provider response")
+	ToolLoopDispatch      = capitan.NewSignal("llm.toolloop.dispatch", "Tool dispatched to handler within a loop iteration")
 )
 
 // Keys for hook event fields.
@@ -51,4 +53,11 @@ var (
 	ResponseIDKey           = capitan.NewStringKey("llm.response.id")
 	ResponseFinishReasonKey = capitan.NewStringKey("llm.response.finish.reason")
 	ResponseCreatedKey      = capitan.NewIntKey("llm.response.created")
+
+	// Tool loop metadata.
+	IterationKey     = capitan.NewIntKey("llm.toolloop.iteration")
+	ToolNameKey      = capitan.NewStringKey("llm.toolloop.tool.name")
+	ToolCallIDKey    = capitan.NewStringKey("llm.toolloop.tool.call.id")
+	CompletedKey     = capitan.NewStringKey("llm.toolloop.completed")
+	MaxIterationsKey = capitan.NewIntKey("llm.toolloop.max_iterations")
 )
