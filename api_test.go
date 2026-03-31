@@ -183,3 +183,98 @@ func TestStreamingProvider(t *testing.T) {
 		var _ Provider = NewMockStreamingProvider(5)
 	})
 }
+
+func TestRoleTool(t *testing.T) {
+	if RoleTool != "tool" {
+		t.Errorf("expected RoleTool='tool', got '%s'", RoleTool)
+	}
+}
+
+func TestStopReasonConstants(t *testing.T) {
+	t.Run("end_turn", func(t *testing.T) {
+		if StopReasonEndTurn != "end_turn" {
+			t.Errorf("expected StopReasonEndTurn='end_turn', got '%s'", StopReasonEndTurn)
+		}
+	})
+
+	t.Run("tool_use", func(t *testing.T) {
+		if StopReasonToolUse != "tool_use" {
+			t.Errorf("expected StopReasonToolUse='tool_use', got '%s'", StopReasonToolUse)
+		}
+	})
+
+	t.Run("max_tokens", func(t *testing.T) {
+		if StopReasonMaxTokens != "max_tokens" {
+			t.Errorf("expected StopReasonMaxTokens='max_tokens', got '%s'", StopReasonMaxTokens)
+		}
+	})
+}
+
+func TestProviderResponse_ToolFields(t *testing.T) {
+	t.Run("zero_value", func(t *testing.T) {
+		resp := ProviderResponse{}
+		if resp.ToolCalls != nil {
+			t.Error("zero-value ProviderResponse should have nil ToolCalls")
+		}
+		if resp.StopReason != "" {
+			t.Error("zero-value ProviderResponse should have empty StopReason")
+		}
+	})
+
+	t.Run("backward_compatible", func(t *testing.T) {
+		// Existing code that constructs ProviderResponse without new fields still works
+		resp := ProviderResponse{
+			Content: "hello",
+			Usage:   TokenUsage{Prompt: 10, Completion: 5, Total: 15},
+		}
+		if resp.Content != "hello" {
+			t.Errorf("expected Content='hello', got '%s'", resp.Content)
+		}
+		if resp.ToolCalls != nil {
+			t.Error("omitted ToolCalls should be nil")
+		}
+		if resp.StopReason != "" {
+			t.Error("omitted StopReason should be empty")
+		}
+	})
+}
+
+func TestMessage_ToolFields(t *testing.T) {
+	t.Run("zero_value", func(t *testing.T) {
+		msg := Message{}
+		if msg.ToolCalls != nil {
+			t.Error("zero-value Message should have nil ToolCalls")
+		}
+		if msg.ToolCallID != "" {
+			t.Error("zero-value Message should have empty ToolCallID")
+		}
+	})
+
+	t.Run("backward_compatible", func(t *testing.T) {
+		// Existing code that constructs Message without new fields still works
+		msg := Message{Role: RoleUser, Content: "hello"}
+		if msg.Role != RoleUser {
+			t.Errorf("expected Role='user', got '%s'", msg.Role)
+		}
+		if msg.ToolCalls != nil {
+			t.Error("omitted ToolCalls should be nil")
+		}
+		if msg.ToolCallID != "" {
+			t.Error("omitted ToolCallID should be empty")
+		}
+	})
+
+	t.Run("tool_message", func(t *testing.T) {
+		msg := Message{
+			Role:       RoleTool,
+			Content:    `{"temperature": 72}`,
+			ToolCallID: "call_123",
+		}
+		if msg.Role != "tool" {
+			t.Errorf("expected Role='tool', got '%s'", msg.Role)
+		}
+		if msg.ToolCallID != "call_123" {
+			t.Errorf("expected ToolCallID='call_123', got '%s'", msg.ToolCallID)
+		}
+	})
+}
