@@ -49,11 +49,17 @@ func NewTerminal(provider Provider) pipz.Chainable[*SynapseRequest] {
 			Content: promptStr,
 		}
 
-		// If provider supports streaming and request has a callback, use Stream.
-		// Otherwise fall back to standard Call.
+		// Route to the appropriate provider method based on request capabilities.
+		// Tools take priority when present. Streaming without tools uses the stream path.
 		var resp *ProviderResponse
 		var err error
-		if sp, ok := provider.(StreamingProvider); ok && req.StreamCallback != nil {
+		if len(req.Tools) > 0 {
+			tp, ok := provider.(ToolProvider)
+			if !ok {
+				return req, fmt.Errorf("provider %s does not support tools", provider.Name())
+			}
+			resp, err = tp.CallWithTools(ctx, messages, req.Temperature, req.Tools)
+		} else if sp, ok := provider.(StreamingProvider); ok && req.StreamCallback != nil {
 			resp, err = sp.Stream(ctx, messages, req.Temperature, req.StreamCallback)
 		} else {
 			resp, err = provider.Call(ctx, messages, req.Temperature)

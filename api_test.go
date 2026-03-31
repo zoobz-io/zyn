@@ -278,3 +278,47 @@ func TestMessage_ToolFields(t *testing.T) {
 		}
 	})
 }
+
+func TestToolProvider(t *testing.T) {
+	t.Run("simple", func(_ *testing.T) {
+		// MockToolProvider satisfies ToolProvider
+		var _ ToolProvider = NewMockToolProvider()
+	})
+
+	t.Run("reliability", func(t *testing.T) {
+		// Regular MockProvider does NOT implement ToolProvider
+		provider := NewMockProvider()
+		_, ok := provider.(ToolProvider)
+		if ok {
+			t.Error("MockProvider should not implement ToolProvider")
+		}
+	})
+
+	t.Run("chaining", func(_ *testing.T) {
+		// MockToolProvider also satisfies Provider
+		var _ Provider = NewMockToolProvider()
+	})
+}
+
+func TestSynapseRequest_ToolsField(t *testing.T) {
+	t.Run("zero_value", func(t *testing.T) {
+		req := SynapseRequest{}
+		if req.Tools != nil {
+			t.Error("zero-value SynapseRequest should have nil Tools")
+		}
+	})
+
+	t.Run("with_tools", func(t *testing.T) {
+		req := SynapseRequest{
+			Tools: []Tool{
+				{Name: "search", Description: "Search the web"},
+			},
+		}
+		if len(req.Tools) != 1 {
+			t.Errorf("expected 1 tool, got %d", len(req.Tools))
+		}
+		if req.Tools[0].Name != "search" {
+			t.Errorf("expected tool name 'search', got '%s'", req.Tools[0].Name)
+		}
+	})
+}

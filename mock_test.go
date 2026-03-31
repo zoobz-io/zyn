@@ -659,6 +659,87 @@ func TestMockStreamingProvider_NilCallback(t *testing.T) {
 	}
 }
 
+func TestNewMockToolProvider(t *testing.T) {
+	t.Run("simple", func(t *testing.T) {
+		provider := NewMockToolProvider()
+		if provider == nil {
+			t.Fatal("NewMockToolProvider returned nil")
+		}
+		if provider.Name() != "mock-tool" {
+			t.Errorf("Expected name 'mock-tool', got '%s'", provider.Name())
+		}
+	})
+
+	t.Run("reliability", func(t *testing.T) {
+		// Default response: calls first tool with empty input
+		provider := NewMockToolProvider()
+		ctx := context.Background()
+		tools := []Tool{{Name: "get_weather", Description: "Get weather"}}
+		resp, err := provider.CallWithTools(ctx, nil, 0.5, tools)
+		if err != nil {
+			t.Fatalf("CallWithTools failed: %v", err)
+		}
+		if resp.StopReason != StopReasonToolUse {
+			t.Errorf("Expected StopReason='tool_use', got '%s'", resp.StopReason)
+		}
+		if len(resp.ToolCalls) != 1 {
+			t.Fatalf("Expected 1 tool call, got %d", len(resp.ToolCalls))
+		}
+		if resp.ToolCalls[0].Name != "get_weather" {
+			t.Errorf("Expected tool call name 'get_weather', got '%s'", resp.ToolCalls[0].Name)
+		}
+		if resp.ToolCalls[0].ID == "" {
+			t.Error("Expected non-empty tool call ID")
+		}
+	})
+
+	t.Run("chaining", func(t *testing.T) {
+		// No tools — returns text response
+		provider := NewMockToolProvider()
+		ctx := context.Background()
+		resp, err := provider.CallWithTools(ctx, nil, 0.5, nil)
+		if err != nil {
+			t.Fatalf("CallWithTools with no tools failed: %v", err)
+		}
+		if resp.StopReason != StopReasonEndTurn {
+			t.Errorf("Expected StopReason='end_turn', got '%s'", resp.StopReason)
+		}
+		if resp.Content == "" {
+			t.Error("Expected non-empty content when no tools provided")
+		}
+	})
+}
+
+func TestMockToolProvider_CustomResponse(t *testing.T) {
+	provider := NewMockToolProvider().WithToolResponse(func(_ []Message, _ []Tool) *ProviderResponse {
+		return &ProviderResponse{
+			Content:    "custom response",
+			StopReason: StopReasonEndTurn,
+			Usage:      TokenUsage{Prompt: 50, Completion: 25, Total: 75},
+		}
+	})
+
+	ctx := context.Background()
+	resp, err := provider.CallWithTools(ctx, nil, 0.5, []Tool{{Name: "test"}})
+	if err != nil {
+		t.Fatalf("CallWithTools failed: %v", err)
+	}
+	if resp.Content != "custom response" {
+		t.Errorf("Expected 'custom response', got '%s'", resp.Content)
+	}
+}
+
+func TestMockToolProvider_Unavailable(t *testing.T) {
+	provider := NewMockToolProvider()
+	provider.SetAvailable(false)
+
+	ctx := context.Background()
+	_, err := provider.CallWithTools(ctx, nil, 0.5, []Tool{{Name: "test"}})
+	if err == nil {
+		t.Error("Expected error from unavailable provider")
+	}
+}
+
 func TestMockProviderFixed_Name(t *testing.T) {
 	provider := NewMockProviderWithResponse(`{"test": "value"}`)
 	name := provider.Name()

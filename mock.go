@@ -420,3 +420,62 @@ func (m *MockStreamingProvider) Stream(ctx context.Context, messages []Message, 
 
 	return resp, nil
 }
+
+// MockToolProvider simulates tool use by returning tool calls based on the tools provided.
+// It implements Provider (via embedding) and ToolProvider.
+type MockToolProvider struct {
+	MockProvider
+	toolResponse func(messages []Message, tools []Tool) *ProviderResponse
+}
+
+// NewMockToolProvider creates a mock that simulates tool use.
+// By default it returns a tool call for the first tool with a mock input.
+func NewMockToolProvider() *MockToolProvider {
+	return &MockToolProvider{
+		MockProvider: MockProvider{
+			name:      "mock-tool",
+			available: true,
+		},
+	}
+}
+
+// WithToolResponse sets a custom function for generating tool responses.
+func (m *MockToolProvider) WithToolResponse(fn func(messages []Message, tools []Tool) *ProviderResponse) *MockToolProvider {
+	m.toolResponse = fn
+	return m
+}
+
+// CallWithTools simulates a tool-using LLM call.
+// If a custom toolResponse function is set, it is used.
+// Otherwise, returns a tool call for the first tool with mock input.
+func (m *MockToolProvider) CallWithTools(_ context.Context, messages []Message, _ float32, tools []Tool) (*ProviderResponse, error) {
+	if !m.available {
+		return nil, fmt.Errorf("provider %s is unavailable", m.name)
+	}
+
+	if m.toolResponse != nil {
+		return m.toolResponse(messages, tools), nil
+	}
+
+	// Default: call the first tool with empty input
+	if len(tools) == 0 {
+		return &ProviderResponse{
+			Content:    "No tools provided",
+			StopReason: StopReasonEndTurn,
+			Usage:      TokenUsage{Prompt: 100, Completion: 50, Total: 150},
+		}, nil
+	}
+
+	return &ProviderResponse{
+		Content:    "",
+		StopReason: StopReasonToolUse,
+		ToolCalls: []ToolCall{
+			{
+				ID:    "call_mock_001",
+				Name:  tools[0].Name,
+				Input: json.RawMessage(`{}`),
+			},
+		},
+		Usage: TokenUsage{Prompt: 100, Completion: 50, Total: 150},
+	}, nil
+}
