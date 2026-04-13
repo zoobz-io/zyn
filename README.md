@@ -107,7 +107,7 @@ func main() {
 
 | Feature              | Description                                                                      | Docs                                              |
 | -------------------- | -------------------------------------------------------------------------------- | ------------------------------------------------- |
-| 8 Synapse Types      | Binary, Classification, Ranking, Sentiment, Extract, Transform, Analyze, Convert | [Synapses](docs/5.reference/2.synapses/)          |
+| 8 Synapse Types      | Binary, Classification, Ranking, Sentiment, Extract, Transform, Analyze, Convert | [Synapses](docs/5.reference/1.cheatsheet.md)          |
 | Sessions             | Conversation context across synapse calls                                        | [Sessions](docs/3.guides/3.sessions.md)           |
 | Structured Prompts   | Type-driven prompt generation prevents divergence                                | [Concepts](docs/2.learn/2.concepts.md)            |
 | Reliability Patterns | Retry, timeout, circuit breaker, rate limiting                                   | [Reliability](docs/3.guides/4.reliability.md)     |
@@ -178,7 +178,7 @@ Three synapses, one session, full observability.
 ### Reference
 
 - [Cheatsheet](docs/5.reference/1.cheatsheet.md) — Quick reference
-- [Synapses](docs/5.reference/2.synapses/) — All synapse types
+- [Synapses](docs/5.reference/1.cheatsheet.md) — All synapse types
 - [Options](docs/5.reference/3.options.md) — Configuration options
 - [Session](docs/5.reference/4.session.md) — Session API
 
