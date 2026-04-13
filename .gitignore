@@ -30,5 +30,8 @@ Thumbs.db
 dist/
 vendor/
 
+# Environment 
+.env
+
 # Claude
 .claude/
