@@ -168,7 +168,9 @@ type SynapseRequest struct {
 	ProviderName string // Name of the provider being used
 
 	// Output fields (populated by pipeline)
-	Response string      // Raw text response from provider
-	Usage    *TokenUsage // Token usage from provider response
-	Error    error       // Any error that occurred during processing
+	Response      string      // Raw text response from provider
+	Usage         *TokenUsage // Token usage from provider response
+	Error         error       // Any error that occurred during processing
+	StopReason    string      // Stop reason from provider response (populated by raw terminal)
+	ResponseCalls []ToolCall  // Tool calls from provider response (populated by raw terminal)
 }

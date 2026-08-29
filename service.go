@@ -79,6 +79,50 @@ func NewTerminal(provider Provider) pipz.Chainable[*SynapseRequest] {
 	})
 }
 
+// Identity for the raw terminal processor.
+var rawTerminalID = pipz.NewIdentity("zyn:raw-terminal", "LLM provider raw terminal")
+
+// NewRawTerminal creates a terminal processor that passes messages through as-is.
+// Unlike NewTerminal, it does not append a rendered Prompt as a user message.
+// It also populates StopReason and ResponseCalls on the request for loop consumers.
+// Used by ToolLoopSynapse where messages are built by the loop, not by a Prompt.
+func NewRawTerminal(provider Provider) pipz.Chainable[*SynapseRequest] {
+	return pipz.Apply(rawTerminalID, func(ctx context.Context, req *SynapseRequest) (*SynapseRequest, error) {
+		// Use req.Messages as-is — no prompt appending
+		messages := req.Messages
+
+		// Same routing logic as NewTerminal
+		var resp *ProviderResponse
+		var err error
+		if len(req.Tools) > 0 && req.StreamEventCallback != nil {
+			tsp, ok := provider.(ToolStreamingProvider)
+			if !ok {
+				return req, fmt.Errorf("provider %s does not support streaming with tools", provider.Name())
+			}
+			resp, err = tsp.StreamWithTools(ctx, messages, req.Temperature, req.Tools, req.StreamEventCallback)
+		} else if len(req.Tools) > 0 {
+			tp, ok := provider.(ToolProvider)
+			if !ok {
+				return req, fmt.Errorf("provider %s does not support tools", provider.Name())
+			}
+			resp, err = tp.CallWithTools(ctx, messages, req.Temperature, req.Tools)
+		} else if sp, ok := provider.(StreamingProvider); ok && req.StreamCallback != nil {
+			resp, err = sp.Stream(ctx, messages, req.Temperature, req.StreamCallback)
+		} else {
+			resp, err = provider.Call(ctx, messages, req.Temperature)
+		}
+		if err != nil {
+			return req, err
+		}
+
+		req.Response = resp.Content
+		req.Usage = &resp.Usage
+		req.StopReason = resp.StopReason
+		req.ResponseCalls = resp.ToolCalls
+		return req, nil
+	})
+}
+
 // GetPipeline returns the internal pipeline for composition.
 // This is used by WithFallback to combine pipelines.
 func (s *Service[T]) GetPipeline() pipz.Chainable[*SynapseRequest] {
